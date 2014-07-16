@@ -25,7 +25,7 @@ public class HazelcastLockFactory extends LockFactory {
 
 	@Override
 	public Lock makeLock(String name) {
-		return new RedisLock(name, pool);
+		return new HazelcastLock(name, pool);
 	}
 
 }

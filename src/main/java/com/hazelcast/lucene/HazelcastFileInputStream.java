@@ -9,7 +9,7 @@ public class HazelcastFileInputStream extends IndexInput implements Cloneable {
 	private HazelcastFile file;
 	
 	public HazelcastFileInputStream(String name, HazelcastFile fl) {
-		super("RedisFileInputStream(name=" + name + ")");
+		super("HazelcastFileInputStream(name=" + name + ")");
 		file = fl;
 	}
 

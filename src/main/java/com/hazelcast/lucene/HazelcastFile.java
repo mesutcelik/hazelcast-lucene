@@ -77,7 +77,7 @@ public class HazelcastFile {
 	protected synchronized void readBuffer() throws IOException {
 		ShardedJedis jd = redisPool.getResource();
 		buffer = jd.get(blockAddress());
-		if( buffer != null && RedisDirectory.COMPRESSED) {
+		if( buffer != null && HazelcastDirectory.COMPRESSED) {
 			buffer = Snappy.uncompress(buffer);
 		}
 		if( buffer == null || buffer.length != BufferLength ){
