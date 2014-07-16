@@ -1,31 +1,27 @@
 package com.hazelcast.lucene;
 
-import java.io.IOException;
-
+import com.hazelcast.core.HazelcastInstance;
 import org.apache.lucene.store.Lock;
 import org.apache.lucene.store.LockFactory;
 
-import redis.clients.jedis.ShardedJedis;
-import redis.clients.jedis.ShardedJedisPool;
+import java.io.IOException;
 
 public class HazelcastLockFactory extends LockFactory {
 	
-	protected ShardedJedisPool pool;
+	protected HazelcastInstance instance;
 	
-	public HazelcastLockFactory(ShardedJedisPool pl) {
-		pool = pl;
+	public HazelcastLockFactory(HazelcastInstance instance) {
+		this.instance = instance;
 	}
 
 	@Override
 	public void clearLock(String name) throws IOException {
-		ShardedJedis jds = pool.getResource();
-		jds.del(name+".lock");
-		pool.returnResource(jds);
+        instance.getLock(name).destroy();
 	}
 
 	@Override
 	public Lock makeLock(String name) {
-		return new HazelcastLock(name, pool);
+		return new HazelcastLock(name, instance);
 	}
 
 }

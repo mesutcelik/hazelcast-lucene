@@ -1,45 +1,40 @@
 package com.hazelcast.lucene;
 
-import java.io.IOException;
-
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.ILock;
 import org.apache.lucene.store.Lock;
 
-import redis.clients.jedis.ShardedJedis;
-import redis.clients.jedis.ShardedJedisPool;
+import java.io.IOException;
 
 public class HazelcastLock extends Lock {
 	
 	String name;
-	ShardedJedisPool pool;
+    HazelcastInstance instance;
+    ILock lock;
 	
-	public HazelcastLock(String nm, ShardedJedisPool pl) {
-		name = nm;
-		pool = pl;
+	public HazelcastLock(String name, HazelcastInstance instance) {
+		this.name = name;
+		this.instance = instance;
+        lock =instance.getLock(name);
 	}
 
 	@Override
 	public boolean isLocked() throws IOException {
-		ShardedJedis jds = pool.getResource();
-		boolean ret = jds.exists(name.concat(".lock"));
-		pool.returnResource(jds);
-		return ret;
+        return lock.isLocked();
 	}
 
 	@Override
 	public boolean obtain() throws IOException {
 		if( isLocked() )
 			return false;
-		ShardedJedis jds = pool.getResource();
-		String ret = jds.set(name+".lock", "1");
-		pool.returnResource(jds);
-		return ret != null;
+
+        lock.lock();
+        return true;
 	}
 
 	@Override
 	public void release() throws IOException {
-		ShardedJedis jds = pool.getResource();
-		jds.del(name+".lock");
-		pool.returnResource(jds);
+        lock.unlock();
 	}
 
 }

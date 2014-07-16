@@ -1,18 +1,17 @@
 package com.hazelcast.lucene;
 
-import java.io.IOException;
-import java.nio.ByteBuffer;
-
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.IMap;
 import org.xerial.snappy.Snappy;
 
-import redis.clients.jedis.ShardedJedis;
-import redis.clients.jedis.ShardedJedisPool;
+import java.io.IOException;
+import java.nio.ByteBuffer;
 
 public class HazelcastFile {
 	
 	protected HazelcastDirectory directory;
-	protected ShardedJedisPool redisPool;
-	
+    private IMap<byte[],byte[]> fileMap;
+
 	private String name;
 	protected long fileLength;
 	protected long currPos, currBlock;
@@ -26,9 +25,9 @@ public class HazelcastFile {
 	
 	protected boolean fileExtended;
 
-	public HazelcastFile(String name, HazelcastDirectory dir, ShardedJedisPool pool) throws IOException {
+	public HazelcastFile(String name, HazelcastDirectory dir,HazelcastInstance instance) throws IOException {
 		this.directory = dir;
-		this.redisPool = pool;
+		this.fileMap = instance.getMap(name);
 		this.name = name;
 		this.currBlock = this.currPos = 0;
 		
@@ -42,12 +41,11 @@ public class HazelcastFile {
 	}
 	
 	public synchronized long size() {
-		ShardedJedis jd = redisPool.getResource();
-		byte [] p = jd.hget(directory.getDirNameBytes(), getNameBytes());
+        byte [] p = directory.getDirectoryMap().get(getName());
+
 		if( p != null && p.length == Long.SIZE/8 ){
 			this.fileLength = ByteBuffer.wrap(p).asLongBuffer().get();
 		}
-		redisPool.returnResource(jd);
 		return this.fileLength;
 	}
 	
@@ -57,33 +55,29 @@ public class HazelcastFile {
 	
 	protected synchronized void flushBuffer() throws IOException {
 		if( dirtyBuffer ) {
-			ShardedJedis jd = redisPool.getResource();
 			if( HazelcastDirectory.COMPRESSED ){
 				byte[] compressed = Snappy.compress(buffer);
-				jd.set(blockAddress(), compressed);
+                fileMap.set(blockAddress(),compressed);
 			}else{
-				jd.set(blockAddress(), buffer);
+                fileMap.set(blockAddress(), buffer);
 			}
 			if( fileExtended ){
-				jd.hset(directory.getDirNameBytes(), getNameBytes(), ByteBuffer.allocate(Long.SIZE/8).putLong(fileLength).array());
+                directory.getDirectoryMap().set(getName(),ByteBuffer.allocate(Long.SIZE/8).putLong(fileLength).array());
 				directory.reloadSizeFromFiles();
 				fileExtended = false;
 			}
-			redisPool.returnResource(jd);
 		}
 		dirtyBuffer = false;
 	}
 	
 	protected synchronized void readBuffer() throws IOException {
-		ShardedJedis jd = redisPool.getResource();
-		buffer = jd.get(blockAddress());
+		buffer = fileMap.get(blockAddress());
 		if( buffer != null && HazelcastDirectory.COMPRESSED) {
 			buffer = Snappy.uncompress(buffer);
 		}
 		if( buffer == null || buffer.length != BufferLength ){
 			buffer = new byte [this.BufferLength];
 		}
-		redisPool.returnResource(jd);
 	}
 	
 	private byte[] blockAddress() {
@@ -185,9 +179,8 @@ public class HazelcastFile {
 	}
 	
 	public synchronized void delete() {
-		ShardedJedis jd = redisPool.getResource();
-		jd.hdel(directory.getDirNameBytes(), getPathBytes());
-		redisPool.returnResource(jd);
+        directory.getDirectoryMap().delete(getName());
+        fileMap.destroy();
 		dirtyBuffer = false;
 	}
 

@@ -1,44 +1,38 @@
 package com.hazelcast.lucene;
 
-import java.io.IOException;
-import java.io.Serializable;
-import java.nio.ByteBuffer;
-import java.util.Collection;
-import java.util.Map;
-import java.util.Set;
-
-import com.hazelcast.lucene.HazelcastBufferedFileInputStream;
-import com.hazelcast.lucene.HazelcastFile;
-import com.hazelcast.lucene.HazelcastFileInputStream;
-import com.hazelcast.lucene.HazelcastFileOutputStream;
-import com.hazelcast.lucene.HazelcastLockFactory;
+import com.hazelcast.core.HazelcastInstance;
+import com.hazelcast.core.IMap;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.store.IndexInput;
 import org.apache.lucene.store.IndexOutput;
 import org.apache.lucene.store.LockFactory;
 
-import redis.clients.jedis.Jedis;
-import redis.clients.jedis.ShardedJedis;
-import redis.clients.jedis.ShardedJedisPool;
-import redis.clients.jedis.exceptions.JedisDataException;
+import java.io.IOException;
+import java.io.Serializable;
+import java.nio.ByteBuffer;
 
 public class HazelcastDirectory extends Directory implements Serializable {
 	public  static int FILE_BUFFER_SIZE = 256 * 1024;
 	public	static boolean COMPRESSED = false;
+    private static String SIZE = "size";
 	
 	private static final long serialVersionUID = 7378532726794782140L;
-	private ShardedJedisPool redisPool;
+	private HazelcastInstance instance;
 	private String dirName;
 	private byte[] dirNameBytes;
 	
 	private long directorySize;
+
+
+    protected IMap<String,byte[]> directoryMap;
 	
-	public HazelcastDirectory(String name, ShardedJedisPool pool) {
-		redisPool = pool;
+	public HazelcastDirectory(String name, HazelcastInstance instance) {
+		this.instance = instance;
 		dirName = name;
-		open();
+        directoryMap = instance.getMap(dirName);
+        open();
 		try {
-			setLockFactory(new HazelcastLockFactory(pool));
+			setLockFactory(new HazelcastLockFactory(instance));
 		} catch (IOException e) {
 			e.printStackTrace();
 		}
@@ -51,22 +45,18 @@ public class HazelcastDirectory extends Directory implements Serializable {
 	}
 	
 	private void open() {
-		ShardedJedis rds = redisPool.getResource();
-		byte[] size = rds.hget(getDirNameBytes(), ":size".getBytes());
+        byte[] size = directoryMap.get(SIZE);
 		directorySize = 0;
 		try {
 			directorySize = ByteBuffer.wrap(size).asLongBuffer().get();
 		}catch(Exception e){
 			reloadSizeFromFiles();
 		}
-		redisPool.returnResource(rds);
 	}
 	
 	public boolean exists() {
-		ShardedJedis rds = redisPool.getResource();
-		boolean ex = rds.exists(getDirNameBytes());
-		redisPool.returnResource(rds);
-		return ex;
+
+        return directoryMap != null;
 	}
 	
 	public void reloadSizeFromFiles() {
@@ -74,80 +64,58 @@ public class HazelcastDirectory extends Directory implements Serializable {
 	}
 	
 	private long dirSize() throws IOException {
-		long ret = 0;
-		
-		ShardedJedis rds = redisPool.getResource();
-		Map<byte[], byte[]> lst = rds.hgetAll(getDirNameBytes());
-		if( lst == null || lst.size() < 1)
+		if( directoryMap == null || directoryMap.isEmpty() )
 			return 0;
-		for(byte[] sz: lst.values() ){
+
+        long ret = 0;
+        for(byte[] sz: directoryMap.values() ){
 			try{ ret += ByteBuffer.wrap(sz).asLongBuffer().get(); }catch(Exception e){}
 		}
-		redisPool.returnResource(rds);
+
 		return ret;
 	}
 
 	@Override
 	public synchronized void close() throws IOException {
-		ShardedJedis rds = redisPool.getResource();
 		directorySize = dirSize();
-		rds.hset(getDirNameBytes(), ":size".getBytes(), ByteBuffer.allocate(Long.SIZE/8).putLong(directorySize).array());
-		
-		//Issue save on each
-		Collection<Jedis> ls = rds.getAllShards();
-		for(Jedis jds: ls){
-			try{
-				jds.bgsave();
-			}catch(JedisDataException e){
-				System.err.println(e);
-				e.printStackTrace(System.err);
-			}
-		}
-		redisPool.returnResourceObject(rds);
+        directoryMap.set(SIZE, ByteBuffer.allocate(Long.SIZE / 8).putLong(directorySize).array());
+
 	}
 
 	@Override
 	public IndexOutput createOutput(String filename) throws IOException {
-		return new HazelcastFileOutputStream( new HazelcastFile(filename, this, redisPool) );
+		return new HazelcastFileOutputStream( new HazelcastFile(filename, this, instance) );
 	}
 
 	@Override
 	public void deleteFile(String filename) throws IOException {
-		new HazelcastFile(filename, this, redisPool).delete();
+		new HazelcastFile(filename, this, instance).delete();
 	}
 
 	@Override
 	public boolean fileExists(String filename) throws IOException {
-		boolean ret = false;
-		ShardedJedis rds = redisPool.getResource();
-		ret = rds.hexists(getDirNameBytes(), filename.getBytes());
-		redisPool.returnResourceObject(rds);
-		return ret;
+        return directoryMap.containsKey(filename);
 	}
 
 	@Override
 	public long fileLength(String filename) throws IOException {
-		return new HazelcastFile(filename, this, redisPool).size();
+		return new HazelcastFile(filename, this, instance).size();
 	}
 
-	@Override
-	public String[] listAll() throws IOException {
-		ShardedJedis rds = redisPool.getResource();
-		Set<String> ls = rds.hkeys(dirName);
-		if( ls == null ){
-			return new String[0];
-		}
-		String[] ret = new String[ls.size()];
-		ls.toArray(ret);
-		redisPool.returnResourceObject(rds);
-		return ret;
-	}
+    @Override
+    public String[] listAll() throws IOException {
+        if (directoryMap == null || directoryMap.isEmpty()) {
+            return new String[0];
+        }
+        int size = directoryMap.keySet().size();
+        return directoryMap.keySet().toArray(new String[size]);
+    }
 
-	@Override
+    @Override
 	public IndexInput openInput(String filename) throws IOException {
 		if( !fileExists(filename) )
 			throw new IOException();
-		return new HazelcastBufferedFileInputStream(new HazelcastFileInputStream( filename, new HazelcastFile(filename, this, redisPool) ));
+		return new HazelcastBufferedFileInputStream(new HazelcastFileInputStream( filename, new HazelcastFile(filename, this, instance) ));
 	}
 
 	@Override
@@ -162,8 +130,8 @@ public class HazelcastDirectory extends Directory implements Serializable {
 		
 	}
 
-	public ShardedJedisPool getRedisPool() {
-		return redisPool;
+	public HazelcastInstance getInstance() {
+		return instance;
 	}
 	
 	public String getDirName() {
@@ -175,5 +143,13 @@ public class HazelcastDirectory extends Directory implements Serializable {
 			dirNameBytes = dirName.getBytes();
 		return dirNameBytes;
 	}
+
+    public IMap<String, byte[]> getDirectoryMap() {
+        return directoryMap;
+    }
+
+    public void setDirectoryMap(IMap<String, byte[]> directoryMap) {
+        this.directoryMap = directoryMap;
+    }
 
 }
