@@ -6,6 +6,8 @@
 
     <name>hazelcastDirectory</name>
     <artifactId>hazelcast-lucene</artifactId>
+    <groupId>com.hazelcast</groupId>
+    <version>0.1-SNAPSHOT</version>
     <packaging>jar</packaging>
 
     <properties>
@@ -113,7 +115,7 @@
     <dependencies>
         <dependency>
             <groupId>com.hazelcast</groupId>
-            <artifactId>hazelcast</artifactId>
+            <artifactId>hazelcast-all</artifactId>
             <version>3.3-RC2</version>
         </dependency>
         <dependency>
