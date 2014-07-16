@@ -1,4 +1,4 @@
-package mxp.lucene.store;
+package com.hazelcast.lucene;
 
 import java.io.IOException;
 
