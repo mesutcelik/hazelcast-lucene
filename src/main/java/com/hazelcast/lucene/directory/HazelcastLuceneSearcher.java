@@ -106,7 +106,7 @@ public class HazelcastLuceneSearcher {
 					for (int i = 0; i < data.length; i++) {
 						System.out.println(i);
 						model.addRow(data[i]);
-						sb.append(data[i][0] + ": " + data[i][1]).append("\n");
+						sb.append(data[i][0] + ": " + data[i][1] + " >> " + data[i][2]).append("\n");
 					}
 					model.fireTableDataChanged();
 					tblSearchResult.repaint();
@@ -127,7 +127,7 @@ public class HazelcastLuceneSearcher {
     	
     	frame.setLayout(new BorderLayout());
     	frame.add(pnlNorth, BorderLayout.NORTH);
-    	frame.add(txtSearchResult, BorderLayout.CENTER);
+    	frame.add(new JScrollPane(txtSearchResult), BorderLayout.CENTER);
     	frame.setSize(1000, 400);
     	frame.setResizable(true);
     	frame.setLocationRelativeTo(null);
@@ -235,10 +235,11 @@ public class HazelcastLuceneSearcher {
             data = new Object[docs.length][];
             int i = 0;
             for (ScoreDoc doc : docs) {
-            	data[i] = new Object[2];
+            	data[i] = new Object[3];
                 Document doc1 = searcher.doc(doc.doc);
                 data[i][0] = doc1.get("path");
                 data[i][1] = doc1.get("lineNo");
+                data[i][2] = doc1.get("contents");
                 System.out.println("path: "+doc1.get("path"));
                 System.out.println("line " + doc1.get("lineNo") + ": " + doc1.get("contents"));
                 i++;
