@@ -25,6 +25,9 @@ import org.apache.lucene.search.ScoreDoc;
 import org.apache.lucene.store.Directory;
 import org.apache.lucene.util.Version;
 
+import java.awt.BorderLayout;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -35,15 +38,103 @@ import java.text.DecimalFormat;
 import java.util.Date;
 import java.util.Stack;
 
+import javax.swing.JButton;
+import javax.swing.JFrame;
+import javax.swing.JLabel;
+import javax.swing.JPanel;
+import javax.swing.JScrollPane;
+import javax.swing.JTable;
+import javax.swing.JTextArea;
+import javax.swing.JTextField;
+import javax.swing.UIManager;
+import javax.swing.UnsupportedLookAndFeelException;
+import javax.swing.table.DefaultTableModel;
+
 /**
  * Created by mesutcelik on 7/16/14.
  */
-public class HazelcastDirectoryApp {
+public class HazelcastLuceneSearcher {
 
     public static long sizeInTotal;
+    public static Directory dir;
+    public static Analyzer analyzer;
+    public static QueryParser parser;
+    public static IndexReader reader;
+    public static IndexSearcher searcher;
+    
+    public static void main(String[] args) throws Exception {
 
-    public static void main(String[] args) {
-
+    	init();
+    	
+    	UIManager.setLookAndFeel(UIManager.getSystemLookAndFeelClassName());
+    	
+    	final JFrame frame = new JFrame();
+    	
+    	JLabel lblSearch = new JLabel("Word to search: ");
+    	final JTextField txtSearch = new JTextField();
+    	txtSearch.setColumns(20);
+    	JButton btnSearch = new JButton("Search");
+    	
+    	JPanel pnlNorth = new JPanel();
+    	pnlNorth.add(lblSearch);
+    	pnlNorth.add(txtSearch);
+    	pnlNorth.add(btnSearch);
+    	
+    	final JPanel pnlCenter = new JPanel();
+    	
+    	final JTable tblSearchResult = new JTable();
+    
+    	tblSearchResult.setSize(400, 400);
+    	
+    	final JTextArea txtSearchResult = new JTextArea();
+    	
+    	btnSearch.addActionListener(new ActionListener() {
+			
+			public void actionPerformed(ActionEvent e) {
+				String[] columnNames = {"First Name",
+		                "Last Name",
+		                "Sport",
+		                "# of Years",
+		                "Vegetarian"};
+		    	
+		    	
+				Object[][] data;
+				try {
+					data = search(txtSearch.getText());
+					StringBuilder sb = new StringBuilder();
+					DefaultTableModel model = (DefaultTableModel)tblSearchResult.getModel();
+					for (int i = 0; i < data.length; i++) {
+						System.out.println(i);
+						model.addRow(data[i]);
+						sb.append(data[i][0] + ": " + data[i][1]).append("\n");
+					}
+					model.fireTableDataChanged();
+					tblSearchResult.repaint();
+					
+					txtSearchResult.setText(sb.toString());
+				} catch (Exception e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
+		    	
+			}
+		});
+    	
+    	
+    	//tblSearchResult.setSize(450, 300);
+    	//pnlCenter.add(comp)
+    	pnlCenter.add(tblSearchResult);
+    	
+    	frame.setLayout(new BorderLayout());
+    	frame.add(pnlNorth, BorderLayout.NORTH);
+    	frame.add(txtSearchResult, BorderLayout.CENTER);
+    	frame.setSize(1000, 400);
+    	frame.setResizable(true);
+    	frame.setLocationRelativeTo(null);
+    	frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    	frame.setVisible(true);
+    	
+    	/*
         String docsPath = "/Users/serkanozal/Documents/workspace";
 
         final File docDir = new File(docsPath);
@@ -103,18 +194,62 @@ public class HazelcastDirectoryApp {
             }
             end = new Date();
             reader.close();
-            //dir.close();
+            dir.close();
 
         } catch (Exception e) {
             System.out.println(" caught a " + e.getClass() +
                     "\n with message: " + e.getMessage());
         }
 
-        //Hazelcast.shutdownAll();
-
+        Hazelcast.shutdownAll();
+*/
     }
 
+    private static void init() {
+    	try {
+    		analyzer = new StandardAnalyzer(Version.LUCENE_46);
+            IndexWriterConfig iwc = new IndexWriterConfig(Version.LUCENE_46, analyzer);
+            iwc.setOpenMode(IndexWriterConfig.OpenMode.CREATE);
 
+           dir = new HazelcastDirectory();
+
+            IndexWriter writer = new IndexWriter(dir, iwc);
+ 
+	    	parser = new QueryParser(Version.LUCENE_46, "contents", analyzer);
+	    	reader = DirectoryReader.open(dir);
+	        searcher = new IndexSearcher(reader);
+    	} catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+    
+    private static Object[][] search(String textToSearch) throws Exception {
+    	Object[][] data = null;
+    	Stack<String> s = new Stack<String>();
+    	for (String text : textToSearch.split("//s+")) {
+    		s.push(text);
+    	}
+        while (!s.empty()) {
+            Query query = parser.parse(s.pop());
+            ScoreDoc[] docs = searcher.search(query,100).scoreDocs;
+            data = new Object[docs.length][];
+            int i = 0;
+            for (ScoreDoc doc : docs) {
+            	data[i] = new Object[2];
+                Document doc1 = searcher.doc(doc.doc);
+                data[i][0] = doc1.get("path");
+                data[i][1] = doc1.get("lineNo");
+                System.out.println("path: "+doc1.get("path"));
+                System.out.println("line " + doc1.get("lineNo") + ": " + doc1.get("contents"));
+                i++;
+            }
+            Thread.sleep(100);
+        }
+    	
+    	return data;
+    }
+    
+    
     static void indexDocs(IndexWriter writer, File file, Integer order)
             throws IOException {
         // do not try to index files that cannot be read

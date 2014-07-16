@@ -38,13 +38,13 @@ import java.util.Stack;
 /**
  * Created by mesutcelik on 7/16/14.
  */
-public class HazelcastDirectoryApp {
+public class HazelcastLuceneIndexer {
 
     public static long sizeInTotal;
 
     public static void main(String[] args) {
 
-        String docsPath = "/Users/serkanozal/Documents/workspace";
+        String docsPath = args[0];
 
         final File docDir = new File(docsPath);
         Date start = new Date();
@@ -57,60 +57,19 @@ public class HazelcastDirectoryApp {
             Directory dir = new HazelcastDirectory();
 
             IndexWriter writer = new IndexWriter(dir, iwc);
-            //  for (int i = 0; i < 40; i++) {
 
             indexDocs(writer, docDir, 0);
-            //}
+            
             writer.close();
 
             Date end = new Date();
             System.out.println(end.getTime() - start.getTime() + " total milliseconds for Indexing");
-
-
-            String field = "contents";
-            String queries = null;
-            int repeat = 0;
-            boolean raw = false;
-            String queryString = null;
-            int hitsPerPage = 10000;
-
-
-            IndexReader reader = DirectoryReader.open(dir);
-            IndexSearcher searcher = new IndexSearcher(reader);
-
-            BufferedReader in = null;
-            if (queries != null) {
-                in = new BufferedReader(new InputStreamReader(new FileInputStream(queries), "UTF-8"));
-            } else {
-                in = new BufferedReader(new InputStreamReader(System.in, "UTF-8"));
-            }
-            QueryParser parser = new QueryParser(Version.LUCENE_46, field, analyzer);
-
-            start = new Date();
-
-            Stack<String> s = new Stack<String>();
-            s.push("HazelcastDirectoryApp");
-
-            while (!s.empty()) {
-                Query query = parser.parse(s.pop());
-                ScoreDoc[] docs = searcher.search(query,100).scoreDocs;
-                for (ScoreDoc doc : docs) {
-                    Document doc1 = searcher.doc(doc.doc);
-                    System.out.println("path: "+doc1.get("path"));
-                    System.out.println("line " + doc1.get("lineNo") + ": " + doc1.get("contents"));
-                }
-                Thread.sleep(100);
-            }
-            end = new Date();
-            reader.close();
-            //dir.close();
-
         } catch (Exception e) {
             System.out.println(" caught a " + e.getClass() +
                     "\n with message: " + e.getMessage());
         }
 
-        //Hazelcast.shutdownAll();
+        Hazelcast.shutdownAll();
 
     }
 
